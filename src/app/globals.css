@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { scroll-behavior: smooth; scroll-padding-top: 120px; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1a1a1a; background: #fff; }
+input[type="range"] { accent-color: #EB0A1E; }
+:focus-visible { outline: 3px solid #EB0A1E; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
