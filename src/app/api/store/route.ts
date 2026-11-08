@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { patchCustomer, readStore } from '@/lib/store';
+import { patchCustomer, readStore, resetStore } from '@/lib/store';
 import type { CustomerRecord } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
 const ALLOWED = ['overrides', 'dealerIds', 'addedIds', 'removedIds', 'customItems', 'searches', 'flags'] as const;
 
-export async function GET() {
+export async function GET(req: Request) {
+  // A page load asks for ?reset=1 so every visit starts from the base data.
+  if (new URL(req.url).searchParams.get('reset') === '1') await resetStore();
   return NextResponse.json(await readStore());
 }
 

@@ -9,9 +9,9 @@ export function useStore() {
   const [data, setData] = useState<StoreData | null>(null);
   const [error, setError] = useState('');
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (reset = false) => {
     try {
-      const r = await fetch('/api/store', { cache: 'no-store' });
+      const r = await fetch(`/api/store${reset ? '?reset=1' : ''}`, { cache: 'no-store' });
       if (!r.ok) throw new Error(`Store returned ${r.status}`);
       setData(await r.json());
       setError('');
@@ -21,7 +21,8 @@ export function useStore() {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // Each page load starts from the base data.
+  useEffect(() => { refresh(true); }, [refresh]);
 
   /** Updates one customer's record locally first, then saves it on the server. */
   const save = useCallback(async (customerId: string, patch: Partial<CustomerRecord>) => {
