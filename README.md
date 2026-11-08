@@ -2,6 +2,8 @@
 
 A simple dashboard that shows a Toyota owner what their car will cost over the next few years, and helps the dealership follow up.
 
+**Live site:** https://mylittletoyota.select
+
 ## Built with
 - Next.js, React, TypeScript
 - Tailwind CSS
