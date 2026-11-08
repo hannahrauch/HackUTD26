@@ -1,24 +1,37 @@
 # My Little Toyota
 
-Next.js 14 (App Router) + React + TypeScript + Tailwind + Recharts + Framer Motion.
+A simple dashboard that shows a Toyota owner what their car will cost over the next few years, and helps the dealership follow up.
+
+## Built with
+- Next.js, React, TypeScript
+- Tailwind CSS
+- Recharts and Framer Motion
+- Google Gemini (explanations and message drafts)
+- Photon (sending approved texts)
 
 ## Run it
+
 ```bash
 npm install
-npm run dev        # http://localhost:3000
+cp .env.example .env.local   # add your keys
+npm run dev                  # open http://localhost:3000
 ```
-Needs Node 18.17 or newer. In VS Code: File > Open Folder, then use the built-in terminal (Ctrl+`).
 
-## Structure
-- `src/lib/engine.ts`   forecast engine: plain math, no AI (value, loan/lease balance, equity, maintenance, repairs, cost, confidence band)
-- `src/lib/messages.ts` message templates (SMS, email, dealership; 3 tones)
-- `src/components/`     Hero, ForecastChart (the centerpiece), WhatIf, NextMove, Messages
-- `src/data/customers.json`  the Toyota Next Move data pack (20 customers) converted from Excel
-- `src/app/api/photon/route.ts`  server-side send route (key stays on the server)
+Needs Node 18.17 or newer.
 
-## Photon
-1. `cp .env.example .env.local` and fill in `PHOTON_API_KEY` and `PHOTON_API_URL`.
-2. Open `src/app/api/photon/route.ts` and match the request body to the Photon 2.0 docs (the field names there are placeholders).
-3. Restart `npm run dev`. The route already refuses customers without consent or flagged for extra care.
+## Two views
 
-Never commit `.env.local` (already in `.gitignore`).
+- **Customer view:** Pick a customer from the top-right menu. See the car, the forecast, upcoming maintenance, inspection items, the next recommended move, and a ZIP search for Toyotas.
+- **Dealer view:** Choose "Admin: Toyota of McKinney." See customers, their changes, and their saved searches. Draft a message, review it, and approve it. Customers never send messages.
+
+## Demo steps
+
+1. In the customer view, pick a user and save a search with a phone number and consent.
+2. Switch to "Admin: Toyota of McKinney" and open the user's saved search.
+3. Click "Text about this search," draft the message, review it, and send.
+
+## Notes
+
+- Data is saved to a local file (`data/store.json`) and is not committed.
+- Never commit `.env.local`. It holds your API keys.
+- Sending requires marketing consent.

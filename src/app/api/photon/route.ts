@@ -1,15 +1,33 @@
 import { NextResponse } from 'next/server';
 import { Photon } from '@photon-ai/api';
 import customers from '@/data/customers.json';
+import { logMessage, readStore } from '@/lib/store';
 
 type C = { id: string; consent: boolean; vuln: boolean };
 
+/**
+ * Sends a dealer-approved text through Photon. Only the dealership can send:
+ * the customer view never calls this route, and the route refuses requests without the dealer role.
+ */
 export async function POST(req: Request) {
-  const { customerId, text } = (await req.json()) as { customerId?: string; text?: string };
+  const { customerId, text, template } = (await req.json()) as { customerId?: string; text?: string; template?: string };
+  const role = req.headers.get('x-role');
   const c = (customers as C[]).find(x => x.id === customerId);
 
+  if (role !== 'dealer') return NextResponse.json({ error: 'Only the dealership can send messages.' }, { status: 403 });
   if (!c || !text) return NextResponse.json({ error: 'Unknown customer or empty message.' }, { status: 400 });
-  if (!c.consent || c.vuln) return NextResponse.json({ error: 'Outreach blocked: no consent or customer flagged for extra care.' }, { status: 403 });
+
+  const record = (status: 'sent' | 'failed' | 'blocked', detail?: string) =>
+    logMessage({ customerId: c.id, text, template: template ?? 'custom', status, detail });
+
+  // Flags set by the dealership win over the data pack. A saved search with consent also counts.
+  const rec = (await readStore()).customers[c.id];
+  const consent = rec?.flags?.consent ?? c.consent;
+  const hasConsent = consent;
+  if (!hasConsent) {
+    await record('blocked', 'No consent on file');
+    return NextResponse.json({ error: 'Outreach blocked: no marketing consent on file.' }, { status: 403 });
+  }
 
   const key = process.env.PHOTON_API_KEY;
   const projectId = process.env.SPECTRUM_PROJECT_ID;
@@ -17,6 +35,7 @@ export async function POST(req: Request) {
   const linePhone = process.env.PHOTON_LINE_PHONE ?? '+16282634622'; // the Photon shared line (the agent's number)
 
   if (!key || !projectId || !myPhone) {
+    await record('failed', 'Missing Photon settings');
     return NextResponse.json({ error: 'Missing PHOTON_API_KEY, SPECTRUM_PROJECT_ID or DEMO_PHONE in .env.local.' }, { status: 501 });
   }
 
@@ -60,13 +79,13 @@ export async function POST(req: Request) {
     });
     console.log('[photon] sent:', sent?.id);
 
+    await record('sent', `Photon message ${sent?.id ?? ''}`.trim());
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     // This is the important part: print WHY it failed
     console.error(`[photon] failed at step "${step}"`, { status: e?.status, code: e?.body?.code, body: e?.body, message: e?.message });
-    return NextResponse.json(
-      { error: `Failed at ${step}: ${e?.body?.code ?? ''} ${e?.body?.detail ?? e?.message ?? ''}`.trim() },
-      { status: 502 },
-    );
+    const detail = `Failed at ${step}: ${e?.body?.code ?? ''} ${e?.body?.detail ?? e?.message ?? ''}`.trim();
+    await record('failed', detail);
+    return NextResponse.json({ error: detail }, { status: 502 });
   }
 }

@@ -2,3 +2,9 @@
 .env.local
 node_modules
 .next
+
+# demo store (customer edits, dealer findings, message log)
+data/store.json
+.vercel
+.env*
+tsconfig.tsbuildinfo

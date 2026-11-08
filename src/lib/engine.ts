@@ -1,7 +1,12 @@
-import type { Customer, Issue } from './types';
+import type { Customer, IssueItem } from './types';
+import { ALL_ITEMS, REPAIRS } from './issues';
+
+/** Allowed range for miles driven per year (the forecast slider and My details both use it). */
+export const MILES = { min: 4000, max: 26000 };
+export const clampMiles = (n: number) => Math.min(MILES.max, Math.max(MILES.min, n));
 
 export const money = (n: number) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
-const DEP: Record<string, number> = { Tacoma: .07, Tundra: .07, 'RAV4 Hybrid': .09, Prius: .09, RAV4: .095, Highlander: .10, Camry: .10, Corolla: .105, 'Corolla Cross': .105, Avalon: .11 };
+const DEP: Record<string, number> = { Tacoma: .07, Tundra: .07, 'RAV4 Hybrid': .09, Prius: .09, RAV4: .095, Highlander: .10, Camry: .10, Corolla: .105, 'Corolla Cross': .105, Avalon: .11, Sequoia: .08, 'Grand Highlander': .10, bZ4X: .12, 'Camry Hybrid': .10, 'Corolla Cross Hybrid': .105 };
 
 export type Row = { t: number; date: Date; odo: number; val: number; hi: number; lo: number; owed: number; equity: number; cm: number; cr: number; paid: number; total: number };
 
@@ -12,9 +17,15 @@ export function valueAt(c: Customer, t: number, miles: number) {
   return v.est_market_value_now * Math.pow(1 - (DEP[v.model] ?? .10), y) * adj;
 }
 
+/**
+ * Month-by-month forecast.
+ * Loans: each month interest accrues, then the payment is taken off. If the customer is not paying,
+ * the balance keeps growing with interest (it does not stay flat).
+ * Leases: the amount owed moves from today's payoff toward the buyout (residual) price at lease end.
+ */
 export function forecast(c: Customer, N: number, miles: number, repair: number): Row[] {
-  const { v, a } = c, loan = a.contract_type === 'loan', now = new Date(), out: Row[] = [];
-  const r = loan ? a.apr! / 1200 : 0;
+  const { v, a } = c, loan = a.contract_type === 'loan', paying = a.paying !== false, now = new Date(), out: Row[] = [];
+  const r = loan ? (a.apr ?? 0) / 1200 : 0;
   let bal = loan ? a.current_balance! : a.payoff_quote!, cm = 0, cr = 0, paid = 0;
   for (let t = 0; t <= N; t++) {
     const date = new Date(now.getFullYear(), now.getMonth() + t, now.getDate());
@@ -23,7 +34,11 @@ export function forecast(c: Customer, N: number, miles: number, repair: number):
       cm += (35 + 0.0011 * odo) * (new Date(v.toyota_care_ends) > date ? 0.4 : 1);
       if (new Date(v.basic_warranty_ends) <= date) cr += 12 + 0.0007 * Math.max(0, odo - 30000);
       if (loan) {
-        if (bal > 0) { const due = bal * (1 + r), pay = Math.min(a.monthly_payment, due); paid += pay; bal = due - pay; }
+        if (bal > 0) {
+          const due = bal * (1 + r);
+          if (paying) { const pay = Math.min(a.monthly_payment, due); paid += pay; bal = due - pay; }
+          else bal = due;
+        }
       } else {
         if (t <= a.months_remaining) paid += a.monthly_payment;
         const k = Math.min(t, a.months_remaining) / a.months_remaining;
@@ -47,15 +62,25 @@ export function interestSeries(B: number, r: number, p: number, H: number) {
   return out;
 }
 
-const ISSUES: [RegExp, string, number, number, number][] = [
-  [/transmission/, 'Transmission repair', 1800, 3000, 4500], [/brake/, 'Brake service', 350, 600, 900],
-  [/battery/, 'Battery replacement', 150, 250, 400], [/tire/, 'Tire replacement', 500, 800, 1200],
-  [/a\/c|air cond/, 'A/C repair', 600, 1200, 2000], [/check engine/, 'Check-engine diagnosis', 150, 500, 2500],
-  [/noise|engine/, 'Engine noise', 500, 1500, 5000]
+/** Keyword rules, used when Gemini is off or fails. Returns a catalog repair, or a custom one if the user typed a dollar amount. */
+const KEYWORDS: [RegExp, string][] = [
+  [/transmission/, 'transmission'], [/brake/, 'brakes'], [/battery/, 'battery-failure'], [/tire/, 'tires'],
+  [/a\/c|air cond/, 'ac'], [/check engine/, 'check-engine'], [/noise|engine/, 'engine-noise'], [/suspension|shock/, 'suspension'], [/alternator/, 'alternator']
 ];
-export function parseIssue(text: string): Issue | null {
-  const t = text.toLowerCase(), m = t.match(/\$\s?([\d,]+)/), it = ISSUES.find(i => i[0].test(t));
-  if (m) { const n = +m[1].replace(/,/g, ''); return { name: it ? it[1] : 'Custom repair', min: Math.round(n * .7), exp: n, max: Math.round(n * 1.4) }; }
-  return it ? { name: it[1], min: it[2], exp: it[3], max: it[4] } : null;
+export function parseIssue(text: string): IssueItem | null {
+  const t = text.toLowerCase(), m = t.match(/\$\s?([\d,]+)/);
+  const hit = KEYWORDS.find(k => k[0].test(t));
+  const base = hit ? REPAIRS.find(x => x.id === hit[1]) : undefined;
+  if (m) {
+    const n = +m[1].replace(/,/g, '');
+    return { id: `custom-${n}`, name: base?.name ?? 'Custom repair', kind: 'repair', severity: base?.severity ?? 'moderate', min: Math.round(n * .7), exp: n, max: Math.round(n * 1.4) };
+  }
+  return base ?? null;
 }
+
+export function itemById(id: string): IssueItem | undefined {
+  return ALL_ITEMS.find(x => x.id === id);
+}
+
 export const horizonLabel = (n: number) => (n < 12 ? `${n} months` : n === 12 ? '1 year' : `${n / 12} years`);
+export type { IssueItem };
